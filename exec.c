@@ -7,9 +7,23 @@
 #include "x86.h"
 #include "elf.h"
 
+enum {
+    MAX_LENGTH = 4096,
+    MAX_DEPTH = 15
+};
+
+int isspace(int ch) {
+    return ch == ' ' || ch == '\n' || ch == '\t';
+}
+
 int
-exec(char *path, char **argv)
+my_exec(char *path, char **argv, int depth)
 {
+    if (depth > MAX_DEPTH) {
+        end_op();
+        cprintf("exec: fail\n");
+        return -1;
+    }
   char *s, *last;
   int i, off;
   uint argc, sz, sp, ustack[3+MAXARG+1];
@@ -28,6 +42,42 @@ exec(char *path, char **argv)
   }
   ilock(ip);
   pgdir = 0;
+
+    char buf[2];
+    if (readi(ip, buf, 0, 2) != 2) {
+        goto bad;
+    }
+    if (buf[0] == '#' && buf[1] == '!') {
+        char *shebang = kalloc();
+        int length = readi(ip, shebang, 2, MAX_LENGTH);
+        int finished = 0;
+        for (int i = 0; (i < length) && (!finished); ++i) {
+            if (isspace(shebang[i])) {
+                shebang[i] = '\0';
+                finished = 1;
+            }
+        }
+        if (!finished) {
+            kfree(shebang);
+            goto bad;
+        }
+        char **do_args = (char **) kalloc();
+        do_args[0] = shebang;
+        do_args[1] = path;
+        int curr = 1;
+        for (char **it = argv + 1; *it; ++it) {
+            ++curr;
+            do_args[curr] = *it;
+        }
+        ++curr;
+        do_args[curr] = 0;
+        argv = do_args;
+        end_op();
+        int rec = my_exec(shebang, argv, depth + 1);
+        kfree((char *) do_args);
+        kfree(shebang);
+        return rec;
+    }
 
   // Check ELF header
   if(readi(ip, (char*)&elf, 0, sizeof(elf)) != sizeof(elf))
@@ -111,4 +161,8 @@ exec(char *path, char **argv)
     end_op();
   }
   return -1;
+}
+
+int exec(char *path, char **argv) {
+    return my_exec(path, argv, 0);
 }
