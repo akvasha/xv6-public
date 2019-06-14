@@ -81,8 +81,15 @@ pipewrite(struct pipe *p, char *addr, int n)
   int i;
 
   acquire(&p->lock);
-  for(i = 0; i < n; i++){
-    while(p->nwrite == p->nread + PIPESIZE){  //DOC: pipewrite-full
+  for(i = 0; i < n; i += PIPESIZE){
+    int can_write_now = 0; //we can write pipesize or less, depends on how much we still need to write
+    int left = n - i;
+    if (left < PIPESIZE) {
+        can_write_now = left; //size of last block with size n % PIPESIZE
+    } else {
+        can_write_now = PIPESIZE;
+    }
+    while(p->nwrite == p->nread + PIPESIZE - can_write_now){  //DOC: pipewrite-full
       if(p->readopen == 0 || myproc()->killed){
         release(&p->lock);
         return -1;
@@ -90,7 +97,9 @@ pipewrite(struct pipe *p, char *addr, int n)
       wakeup(&p->nread);
       sleep(&p->nwrite, &p->lock);  //DOC: pipewrite-sleep
     }
-    p->data[p->nwrite++ % PIPESIZE] = addr[i];
+    for (int j = i; j < can_write_now; ++j) {
+        p->data[p->nwrite++ % PIPESIZE] = addr[i];
+    }
   }
   wakeup(&p->nread);  //DOC: pipewrite-wakeup1
   release(&p->lock);
