@@ -98,7 +98,7 @@ pipewrite(struct pipe *p, char *addr, int n)
       sleep(&p->nwrite, &p->lock);  //DOC: pipewrite-sleep
     }
     for (int j = i; j < can_write_now; ++j) {
-        p->data[p->nwrite++ % PIPESIZE] = addr[i];
+        p->data[p->nwrite++ % PIPESIZE] = addr[j];
     }
   }
   wakeup(&p->nread);  //DOC: pipewrite-wakeup1
